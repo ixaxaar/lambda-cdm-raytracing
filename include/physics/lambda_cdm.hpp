@@ -5,18 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include "core/math_types.hpp"
+#include "physics/cosmology_model.hpp"
 
 namespace physics {
-
-// Cosmological parameters for Lambda-CDM model
-struct CosmologyParams {
-    double omega_m = 0.31;      // Matter density parameter
-    double omega_lambda = 0.69; // Dark energy density parameter
-    double omega_b = 0.049;     // Baryon density parameter  
-    double h = 0.67;            // Hubble parameter (H0 / 100 km/s/Mpc)
-    double sigma_8 = 0.81;      // Power spectrum normalization
-    double n_s = 0.96;          // Spectral index
-};
 
 // Particle structure (kept for compatibility, but GPU uses SoA)
 struct Particle {

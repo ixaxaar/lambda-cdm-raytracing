@@ -25,6 +25,12 @@ if(HAVE_CUDA AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/barnes_hut_test.cu")
     target_link_libraries(barnes_hut_test lambda_cdm_core)
 endif()
 
+# Cosmology test example
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cosmology_test.cpp")
+    add_executable(cosmology_test cosmology_test.cpp)
+    target_link_libraries(cosmology_test lambda_cdm_core)
+endif()
+
 # Advanced examples (when implementations are complete)
 # add_executable(cluster_simulation cluster_simulation.cpp)
 # add_executable(tensorrt_optimization tensorrt_optimization.cpp)

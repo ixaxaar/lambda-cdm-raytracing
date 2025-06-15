@@ -51,6 +51,7 @@ class LambdaCDMSimulationImpl {
 public:
     // Simulation parameters
     CosmologyParams params_;
+    std::unique_ptr<CosmologyModel> cosmology_;
     size_t num_particles_;
     float box_size_;
     double time_step_;
@@ -75,7 +76,8 @@ public:
     cudaStream_t streams_[2];
     
     LambdaCDMSimulationImpl(size_t num_particles, float box_size, const CosmologyParams& params)
-        : params_(params), num_particles_(num_particles), box_size_(box_size),
+        : params_(params), cosmology_(std::make_unique<CosmologyModel>(params)),
+          num_particles_(num_particles), box_size_(box_size),
           time_step_(0.01f), scale_factor_(1.0), softening_(0.01f), current_step_(0),
           d_positions_(nullptr), d_velocities_(nullptr), d_forces_(nullptr),
           d_curand_states_(nullptr), d_kinetic_energy_(nullptr), d_potential_energy_(nullptr) {
@@ -207,29 +209,31 @@ public:
     }
     
     double hubble_function(double a) const {
-        double omega_m_a3 = params_.omega_m / (a * a * a);
-        double omega_lambda = params_.omega_lambda;
-        return params_.h * sqrt(omega_m_a3 + omega_lambda);
+        return cosmology_->hubble_parameter_a(a);
     }
     
     double growth_factor(double a) const {
-        // Approximate growth factor for Lambda-CDM
-        double omega_m_a3 = params_.omega_m / (a * a * a);
-        double omega_lambda = params_.omega_lambda;
-        double omega_total = omega_m_a3 + omega_lambda;
-        
-        double omega_m_z = omega_m_a3 / omega_total;
-        double omega_lambda_z = omega_lambda / omega_total;
-        
-        double f1 = pow(omega_m_z, 4.0/7.0);
-        double f2 = omega_lambda_z / (1.0 + omega_m_z/2.0);
-        
-        return a * f1 - f2;
+        return cosmology_->growth_factor(a);
+    }
+    
+    double growth_rate(double a) const {
+        return cosmology_->growth_rate(a);
+    }
+    
+    double power_spectrum(double k) const {
+        // Power spectrum at current redshift
+        double z = 1.0 / scale_factor_ - 1.0;
+        return cosmology_->power_spectrum(k, z);
     }
     
     void update_scale_factor(double dt) {
-        double H = hubble_function(scale_factor_);
+        // Use proper Friedmann equation integration
+        // da/dt = a * H(a)
+        double H = cosmology_->hubble_parameter_a(scale_factor_);
         scale_factor_ += scale_factor_ * H * dt;
+        
+        // Convert dt from code units to physical units if needed
+        // For N-body simulations, dt is typically in units of H0^-1
     }
 };
 
