@@ -1,0 +1,170 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+.cmake/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.make
+
+# Compiled binaries
+*.exe
+*.out
+*.app
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Object files
+*.o
+*.obj
+*.lo
+*.slo
+*.ko
+*.elf
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+*.gch
+*.pch
+
+# CUDA compiled files
+*.ptx
+*.cubin
+*.fatbin
+
+# TensorRT files
+*.trt
+*.engine
+*.onnx
+*.pb
+
+# Simulation output
+output/
+results/
+data/
+snapshots/
+checkpoints/
+*.h5
+*.hdf5
+*.dat
+*.bin
+
+# Logs
+*.log
+logs/
+profiling_report.json
+simulation.log
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.#*
+\#*#
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+*.vcxproj*
+*.sln
+*.suo
+*.user
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Package managers
+node_modules/
+.npm
+.yarn/
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Documentation
+docs/_build/
+docs/html/
+docs/latex/
+*.pdf
+doxygen_warnings.txt
+
+# Test outputs
+test_results/
+*.xml
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Performance profiling
+*.prof
+*.perf
+nvprof_*
+nsight_*
+
+# Configuration overrides
+local_config.json
+*_local.json
+.env
+.env.local
+
+# Large files (use Git LFS instead)
+*.fits
+*.nc
+*.netcdf
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# External dependencies
+third_party/
+external/
+vendor/
+lib/downloads/
+
+# Generated files
+version.h
+config.h
+configure
+autom4te.cache/
+aclocal.m4
+
+# SLURM/PBS job files
+slurm-*.out
+*.pbs.o*
+*.pbs.e*
+
+# MPI debugging
+core.*
+vgcore.*

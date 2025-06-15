@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Release
+  CUDA_VERSION: "11.8"
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04, ubuntu-22.04]
+        cuda: ["11.8", "12.0"]
+        compiler: [gcc-9, gcc-11, clang-14]
+        
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install CUDA
+      uses: Jimver/cuda-toolkit@v0.2.11
+      with:
+        cuda: ${{ matrix.cuda }}
+        method: 'network'
+        sub-packages: '["nvcc", "cudart", "thrust", "cufft"]'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libhdf5-dev \
+          libopenmpi-dev \
+          libeigen3-dev \
+          libgtest-dev \
+          libgmock-dev \
+          clang-format \
+          valgrind
+        
+        # Install TensorRT (mock for CI)
+        wget -qO- https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2004/x86_64/nvidia-machine-learning-repo-ubuntu2004_1.0.0-1_amd64.deb | sudo dpkg -i -
+        sudo apt-get update
+        sudo apt-get install -y libnvinfer-dev
+
+    - name: Setup compiler
+      run: |
+        if [[ "${{ matrix.compiler }}" == gcc-* ]]; then
+          sudo apt-get install -y ${{ matrix.compiler }} g++-${matrix.compiler#gcc-}
+          echo "CC=${{ matrix.compiler }}" >> $GITHUB_ENV
+          echo "CXX=g++-${matrix.compiler#gcc-}" >> $GITHUB_ENV
+        elif [[ "${{ matrix.compiler }}" == clang-* ]]; then
+          sudo apt-get install -y ${{ matrix.compiler }} libc++-dev libc++abi-dev
+          echo "CC=${{ matrix.compiler }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.compiler }}++" >> $GITHUB_ENV
+        fi
+
+    - name: Configure CMake
+      run: |
+        cmake -B build \
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
+          -DCMAKE_CUDA_ARCHITECTURES="70;75;80" \
+          -DENABLE_TESTING=ON \
+          -DENABLE_BENCHMARKS=ON \
+          -DUSE_GPU=ON \
+          -DUSE_MPI=ON \
+          -DUSE_TENSORRT=ON \
+          -DWARNINGS_AS_ERRORS=ON
+
+    - name: Build
+      run: cmake --build build --config ${{env.BUILD_TYPE}} --parallel $(nproc)
+
+    - name: Check formatting
+      run: |
+        find include src examples -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" | \
+        xargs clang-format --dry-run --Werror
+
+    - name: Run tests
+      working-directory: build
+      run: |
+        ctest --output-on-failure --parallel $(nproc)
+
+    - name: Run memory tests
+      if: matrix.os == 'ubuntu-22.04' && matrix.compiler == 'gcc-11'
+      working-directory: build
+      run: |
+        ctest -T memcheck --output-on-failure
+
+    - name: Run benchmarks
+      if: matrix.os == 'ubuntu-22.04' && matrix.compiler == 'gcc-11'
+      working-directory: build
+      run: |
+        ./benchmarks/force_computation_benchmark --benchmark_out=benchmark_results.json
+
+    - name: Upload benchmark results
+      if: matrix.os == 'ubuntu-22.04' && matrix.compiler == 'gcc-11'
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: build/benchmark_results.json
+
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Generate documentation
+      run: |
+        doxygen Doxyfile
+
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/html
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install clang-tidy
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tidy
+
+    - name: Run static analysis
+      run: |
+        cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        run-clang-tidy -p build -header-filter="include/.*" src/ include/
+
+  performance-regression:
+    runs-on: self-hosted
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Build PR version
+      run: |
+        cmake -B build-pr -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARKS=ON
+        cmake --build build-pr --parallel $(nproc)
+
+    - name: Build main version
+      run: |
+        git checkout main
+        cmake -B build-main -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARKS=ON
+        cmake --build build-main --parallel $(nproc)
+        git checkout -
+
+    - name: Run performance comparison
+      run: |
+        ./scripts/performance_comparison.sh build-main build-pr
+
+    - name: Comment performance results
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const results = fs.readFileSync('performance_comparison.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: results
+          });
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/init@v2
+      with:
+        languages: cpp
+
+    - name: Build for security scan
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Debug
+        cmake --build build
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
