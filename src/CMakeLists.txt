@@ -30,6 +30,14 @@ if(HAVE_CUDA)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/resource_manager.cu")
         list(APPEND SOURCES core/resource_manager.cu)
     endif()
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/analysis/power_spectrum.cu")
+        list(APPEND SOURCES analysis/power_spectrum.cu)
+    endif()
+endif()
+
+# Analysis sources
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/analysis/halo_finder.cpp")
+    list(APPEND SOURCES analysis/halo_finder.cpp)
 endif()
 
 if(HAVE_MPI)
@@ -89,6 +97,12 @@ if(HAVE_HDF5)
     )
 endif()
 
+if(HAVE_FFTW)
+    list(APPEND LINK_LIBRARIES
+        ${FFTW3_LIBRARIES}
+    )
+endif()
+
 if(HAVE_TENSORRT)
     list(APPEND LINK_LIBRARIES
         ${TensorRT_LIBRARIES}
@@ -108,6 +122,10 @@ endif()
 
 if(HAVE_HDF5)
     target_compile_definitions(lambda_cdm_core PUBLIC HAVE_HDF5)
+endif()
+
+if(HAVE_FFTW)
+    target_compile_definitions(lambda_cdm_core PUBLIC HAVE_FFTW)
 endif()
 
 if(HAVE_TENSORRT)
