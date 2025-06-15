@@ -1,59 +1,86 @@
 #pragma once
 
-#include <cuda_runtime.h>
 #include <vector>
 #include <memory>
+#include <cstddef>
+#include <cstdint>
+#include "core/math_types.hpp"
 
 namespace physics {
 
+// Cosmological parameters for Lambda-CDM model
 struct CosmologyParams {
     double omega_m = 0.31;      // Matter density parameter
-    double omega_lambda = 0.69;  // Dark energy density parameter
-    double omega_b = 0.049;      // Baryon density parameter
-    double h = 0.67;             // Hubble parameter
-    double sigma_8 = 0.81;       // Amplitude of matter fluctuations
-    double n_s = 0.96;           // Spectral index
+    double omega_lambda = 0.69; // Dark energy density parameter
+    double omega_b = 0.049;     // Baryon density parameter  
+    double h = 0.67;            // Hubble parameter (H0 / 100 km/s/Mpc)
+    double sigma_8 = 0.81;      // Power spectrum normalization
+    double n_s = 0.96;          // Spectral index
 };
 
+// Particle structure (kept for compatibility, but GPU uses SoA)
 struct Particle {
     float3 position;
     float3 velocity;
     float mass;
-    int id;
+    uint64_t id;
 };
+
+// Forward declaration to hide CUDA implementation details
+class LambdaCDMSimulationImpl;
 
 class LambdaCDMSimulation {
 private:
-    CosmologyParams params_;
-    std::vector<Particle> particles_;
-    std::unique_ptr<float[]> forces_;
-
-    float* d_positions_;
-    float* d_velocities_;
-    float* d_masses_;
-    float* d_forces_;
-
-    size_t num_particles_;
-    float box_size_;
-    float time_step_;
-    double scale_factor_;
-
+    std::unique_ptr<LambdaCDMSimulationImpl> pImpl;
+    
 public:
-    LambdaCDMSimulation(size_t num_particles, float box_size, const CosmologyParams& params);
+    LambdaCDMSimulation(size_t num_particles, float box_size, 
+                       const CosmologyParams& params = CosmologyParams());
     ~LambdaCDMSimulation();
-
+    
+    // Disable copy constructor and assignment
+    LambdaCDMSimulation(const LambdaCDMSimulation&) = delete;
+    LambdaCDMSimulation& operator=(const LambdaCDMSimulation&) = delete;
+    
+    // Enable move semantics
+    LambdaCDMSimulation(LambdaCDMSimulation&&) noexcept;
+    LambdaCDMSimulation& operator=(LambdaCDMSimulation&&) noexcept;
+    
+    // Initialization
     void initialize_particles();
+    void set_initial_conditions_from_power_spectrum();
+    void set_softening(float softening);
+    
+    // Simulation methods
     void step(double dt);
     void compute_forces();
-    void update_positions(double dt);
+    void compute_energy();
     void update_scale_factor(double dt);
-
+    
+    // Cosmology functions
     double hubble_function(double a) const;
     double growth_factor(double a) const;
-
-    const std::vector<Particle>& get_particles() const { return particles_; }
-    double get_scale_factor() const { return scale_factor_; }
-    double get_redshift() const { return 1.0 / scale_factor_ - 1.0; }
+    double power_spectrum(double k) const;
+    
+    // Data access (copy from GPU)
+    void copy_particles_to_host(std::vector<Particle>& particles) const;
+    void copy_positions_to_host(float* positions) const;
+    void copy_velocities_to_host(float* velocities) const;
+    
+    // Accessors
+    double get_scale_factor() const;
+    double get_redshift() const;
+    size_t get_num_particles() const;
+    float get_box_size() const;
+    float get_kinetic_energy() const;
+    float get_potential_energy() const;
+    float get_total_energy() const;
+    size_t get_current_step() const;
+    
+    // Performance monitoring
+    void enable_profiling();
+    void disable_profiling();
+    void print_performance_stats() const;
 };
 
 }

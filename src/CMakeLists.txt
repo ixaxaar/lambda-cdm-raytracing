@@ -12,8 +12,11 @@ set(SOURCES ${CORE_SOURCES})
 
 if(HAVE_CUDA)
     # Only add CUDA sources if they exist
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/physics/lambda_cdm.cu")
-        list(APPEND SOURCES physics/lambda_cdm.cu)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/physics/lambda_cdm_impl.cu")
+        list(APPEND SOURCES physics/lambda_cdm_impl.cu)
+    endif()
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/physics/lambda_cdm_kernels.cu")
+        list(APPEND SOURCES physics/lambda_cdm_kernels.cu)
     endif()
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/forces/tree_force_computer.cu")
         list(APPEND SOURCES forces/tree_force_computer.cu)

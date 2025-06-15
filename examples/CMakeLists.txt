@@ -13,6 +13,12 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/basic_simulation.cpp")
     )
 endif()
 
+# CUDA N-body test example
+if(HAVE_CUDA AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cuda_nbody_test.cpp")
+    add_executable(cuda_nbody_test cuda_nbody_test.cpp)
+    target_link_libraries(cuda_nbody_test lambda_cdm_core)
+endif()
+
 # Advanced examples (when implementations are complete)
 # add_executable(cluster_simulation cluster_simulation.cpp)
 # add_executable(tensorrt_optimization tensorrt_optimization.cpp)

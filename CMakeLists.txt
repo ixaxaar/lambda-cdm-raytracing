@@ -19,6 +19,15 @@ if(USE_CUDA)
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found: ${CUDAToolkit_VERSION}")
         set(HAVE_CUDA TRUE)
+        enable_language(CUDA)
+        
+        # Set CUDA architecture (auto-detect if not specified)
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86)
+        endif()
+        
+        # Enable CUDA separable compilation for better performance
+        set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
     else()
         message(WARNING "CUDA not found - GPU acceleration disabled")
         set(HAVE_CUDA FALSE)
@@ -68,8 +77,7 @@ endif()
 # Compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -Wall -Wextra")
 if(HAVE_CUDA)
-    enable_language(CUDA)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -arch=sm_75")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 --expt-relaxed-constexpr --use_fast_math")
 endif()
 
 # Include directories
