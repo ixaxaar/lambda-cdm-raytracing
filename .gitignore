@@ -168,3 +168,12 @@ slurm-*.out
 # MPI debugging
 core.*
 vgcore.*
+
+# Built files
+examples/2lpt_test
+examples/barnes_hut_test
+examples/basic_simulation
+examples/cosmology_test
+examples/cuda_nbody_test
+examples/zeldovich_test
+src/lambda_cdm_sim
