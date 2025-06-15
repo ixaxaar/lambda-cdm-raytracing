@@ -1,0 +1,183 @@
+{
+  "simulation": {
+    "name": "BasicLambdaCDM",
+    "description": "Basic Lambda-CDM cosmological simulation",
+    "version": "1.0.0",
+    "output_directory": "output/basic_lambda_cdm",
+    "checkpoint_frequency": 100,
+    "output_frequency": 10
+  },
+  
+  "physics": {
+    "cosmology": {
+      "model": "LambdaCDMModel",
+      "parameters": {
+        "omega_m": 0.31,
+        "omega_lambda": 0.69,
+        "omega_b": 0.049,
+        "h": 0.67,
+        "sigma_8": 0.81,
+        "n_s": 0.96
+      },
+      "initial_redshift": 99.0,
+      "final_redshift": 0.0
+    },
+    
+    "forces": {
+      "primary_computer": {
+        "type": "TreeForceComputer",
+        "name": "MainForceComputer",
+        "parameters": {
+          "opening_angle": 0.5,
+          "leaf_capacity": 8,
+          "max_depth": 20,
+          "softening_length": 0.01,
+          "use_gpu": true,
+          "force_kernel": "Newtonian"
+        }
+      },
+      
+      "fallback_computers": [
+        {
+          "type": "DirectForceComputer",
+          "name": "DirectFallback",
+          "parameters": {
+            "softening_length": 0.01,
+            "use_gpu": true
+          }
+        }
+      ]
+    },
+    
+    "integration": {
+      "integrator": {
+        "type": "LeapfrogIntegrator",
+        "name": "MainIntegrator",
+        "parameters": {
+          "adaptive_timestep": true,
+          "min_timestep": 1e-6,
+          "max_timestep": 0.1,
+          "accuracy_tolerance": 1e-8
+        }
+      }
+    }
+  },
+  
+  "particles": {
+    "num_particles": 100000,
+    "box_size": 100.0,
+    "periodic_boundaries": true,
+    
+    "initial_conditions": {
+      "generator": {
+        "type": "ZelDovichGenerator",
+        "name": "ICGenerator",
+        "parameters": {
+          "power_spectrum": "CDM",
+          "random_seed": 12345,
+          "grid_size": 64,
+          "use_2lpt": true
+        }
+      }
+    }
+  },
+  
+  "compute": {
+    "gpu": {
+      "enabled": true,
+      "device_id": 0,
+      "memory_limit": "80%",
+      "streams": 4
+    },
+    
+    "tensorrt": {
+      "enabled": true,
+      "engine_path": "models/nbody_engine.trt",
+      "precision": "FP16",
+      "max_batch_size": 100000,
+      "workspace_size": "1GB"
+    },
+    
+    "mpi": {
+      "enabled": false,
+      "domain_decomposition": "3D",
+      "load_balancing": true,
+      "ghost_zone_width": 0.1
+    },
+    
+    "threading": {
+      "num_threads": 0,
+      "affinity": "auto"
+    }
+  },
+  
+  "time": {
+    "initial_time": 0.0,
+    "final_time": 10.0,
+    "initial_timestep": 0.01,
+    "max_steps": 1000000,
+    "time_units": "Gyr"
+  },
+  
+  "io": {
+    "output_format": "HDF5",
+    "compression": "gzip",
+    "compression_level": 6,
+    
+    "snapshots": {
+      "enabled": true,
+      "frequency": 10,
+      "filename_pattern": "snapshot_{step:06d}_{redshift:.3f}.h5",
+      "fields": ["positions", "velocities", "masses", "particle_ids"]
+    },
+    
+    "analysis": {
+      "enabled": true,
+      "power_spectrum": {
+        "enabled": true,
+        "frequency": 5,
+        "k_min": 0.01,
+        "k_max": 10.0,
+        "num_bins": 100
+      },
+      
+      "halo_finder": {
+        "enabled": true,
+        "algorithm": "FoF",
+        "linking_length": 0.2,
+        "min_particles": 20
+      }
+    },
+    
+    "diagnostics": {
+      "energy_conservation": true,
+      "momentum_conservation": true,
+      "angular_momentum_conservation": true,
+      "particle_statistics": true
+    }
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "console_output": true,
+    "file_output": true,
+    "log_file": "simulation.log",
+    "performance_logging": true,
+    "memory_tracking": true
+  },
+  
+  "profiling": {
+    "enabled": true,
+    "detailed_timing": true,
+    "memory_profiling": true,
+    "gpu_profiling": true,
+    "output_file": "profiling_report.json"
+  },
+  
+  "validation": {
+    "check_initial_conditions": true,
+    "validate_forces": true,
+    "check_energy_conservation": true,
+    "tolerance": 1e-6
+  }
+}

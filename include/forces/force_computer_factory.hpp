@@ -1,10 +1,12 @@
 #pragma once
 
 #include "core/interfaces.hpp"
+#include "core/math_types.hpp"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <cmath>
 
 namespace forces {
 

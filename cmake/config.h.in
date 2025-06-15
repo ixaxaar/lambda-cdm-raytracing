@@ -1,0 +1,42 @@
+#pragma once
+
+// Lambda-CDM Raytracing Configuration
+// Generated automatically by CMake
+
+#define LAMBDA_CDM_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define LAMBDA_CDM_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define LAMBDA_CDM_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+// Feature availability
+#cmakedefine HAVE_CUDA
+#cmakedefine HAVE_MPI
+#cmakedefine HAVE_HDF5
+#cmakedefine HAVE_TENSORRT
+
+// Build configuration
+#cmakedefine CMAKE_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+
+// Conditional compilation macros
+#ifdef HAVE_CUDA
+    #define LAMBDA_CDM_GPU_ENABLED 1
+#else
+    #define LAMBDA_CDM_GPU_ENABLED 0
+#endif
+
+#ifdef HAVE_MPI
+    #define LAMBDA_CDM_MPI_ENABLED 1
+#else
+    #define LAMBDA_CDM_MPI_ENABLED 0
+#endif
+
+#ifdef HAVE_HDF5
+    #define LAMBDA_CDM_HDF5_ENABLED 1
+#else
+    #define LAMBDA_CDM_HDF5_ENABLED 0
+#endif
+
+#ifdef HAVE_TENSORRT
+    #define LAMBDA_CDM_TENSORRT_ENABLED 1
+#else
+    #define LAMBDA_CDM_TENSORRT_ENABLED 0
+#endif

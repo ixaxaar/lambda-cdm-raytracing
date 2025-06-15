@@ -2,6 +2,7 @@
 
 #include "interfaces.hpp"
 #include "simulation_context.hpp"
+#include "math_types.hpp"
 #include <memory>
 #include <vector>
 #include <string>
@@ -25,6 +26,7 @@ struct SimulationStatistics {
     double scale_factor;
     double redshift;
     size_t num_particles;
+    size_t current_step;
     
     // Performance metrics
     double steps_per_second;

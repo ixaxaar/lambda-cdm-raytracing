@@ -113,6 +113,7 @@ public:
     double get_redshift() const { return 1.0 / scale_factor_ - 1.0; }
     std::string get_timestamp() const;
     std::string get_output_directory() const;
+    std::string generate_simulation_id() const;
     
     // Plugin management
     bool load_plugin(const std::string& plugin_path);

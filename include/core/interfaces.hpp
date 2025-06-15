@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <any>
 #include <typeindex>
+#include <cstdint>
 
 namespace core {
 
@@ -83,12 +84,12 @@ public:
 class IObserver {
 public:
     virtual ~IObserver() = default;
-    virtual void on_simulation_start(const SimulationContext& context) {}
-    virtual void on_simulation_end(const SimulationContext& context) {}
-    virtual void on_step_start(double time, size_t step) {}
-    virtual void on_step_end(double time, size_t step) {}
-    virtual void on_error(const std::string& error_message) {}
-    virtual void on_warning(const std::string& warning_message) {}
+    virtual void on_simulation_start(const SimulationContext& context) { (void)context; }
+    virtual void on_simulation_end(const SimulationContext& context) { (void)context; }
+    virtual void on_step_start(double time, size_t step) { (void)time; (void)step; }
+    virtual void on_step_end(double time, size_t step) { (void)time; (void)step; }
+    virtual void on_error(const std::string& error_message) { (void)error_message; }
+    virtual void on_warning(const std::string& warning_message) { (void)warning_message; }
 };
 
 class IResourceManager {
