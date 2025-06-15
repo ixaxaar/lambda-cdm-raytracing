@@ -9,6 +9,27 @@
 namespace physics {
 namespace kernels {
 
+// CUDA kernel functions (for direct access)
+__global__ void compute_forces_direct(
+    const float4* __restrict__ positions,
+    float3* __restrict__ forces,
+    const int num_particles,
+    const float box_size,
+    const float softening2);
+
+__global__ void update_velocities(
+    float3* __restrict__ velocities,
+    const float3* __restrict__ forces,
+    const int num_particles,
+    const float dt);
+
+__global__ void update_positions(
+    float4* __restrict__ positions,
+    const float3* __restrict__ velocities,
+    const int num_particles,
+    const float dt,
+    const float box_size);
+
 // CUDA kernel launch functions
 void launch_force_computation(
     const float4* d_positions,  // x, y, z, mass

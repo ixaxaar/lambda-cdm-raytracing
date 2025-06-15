@@ -7,6 +7,98 @@
 namespace physics {
 namespace kernels {
 
+// Direct O(N^2) force computation for comparison
+__global__ void compute_forces_direct(
+    const float4* __restrict__ positions,
+    float3* __restrict__ forces,
+    const int num_particles,
+    const float box_size,
+    const float softening2) {
+    
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_particles) return;
+    
+    float4 pos_i = positions[i];
+    float3 force = make_float3(0.0f, 0.0f, 0.0f);
+    
+    // Compute force from all other particles
+    for (int j = 0; j < num_particles; j++) {
+        if (i == j) continue;
+        
+        float4 pos_j = positions[j];
+        
+        // Compute distance with periodic boundary conditions
+        float dx = pos_j.x - pos_i.x;
+        float dy = pos_j.y - pos_i.y;
+        float dz = pos_j.z - pos_i.z;
+        
+        // Apply minimum image convention
+        dx = dx - box_size * roundf(dx / box_size);
+        dy = dy - box_size * roundf(dy / box_size);
+        dz = dz - box_size * roundf(dz / box_size);
+        
+        float r2 = dx*dx + dy*dy + dz*dz + softening2;
+        float r = sqrtf(r2);
+        float r3 = r2 * r;
+        
+        // Gravitational force (G=1)
+        float f = pos_j.w / r3;
+        
+        force.x += f * dx;
+        force.y += f * dy;
+        force.z += f * dz;
+    }
+    
+    forces[i] = force;
+}
+
+// Simple velocity update
+__global__ void update_velocities(
+    float3* __restrict__ velocities,
+    const float3* __restrict__ forces,
+    const int num_particles,
+    const float dt) {
+    
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_particles) return;
+    
+    float3 vel = velocities[i];
+    float3 force = forces[i];
+    
+    vel.x += force.x * dt;
+    vel.y += force.y * dt;
+    vel.z += force.z * dt;
+    
+    velocities[i] = vel;
+}
+
+// Simple position update
+__global__ void update_positions(
+    float4* __restrict__ positions,
+    const float3* __restrict__ velocities,
+    const int num_particles,
+    const float dt,
+    const float box_size) {
+    
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_particles) return;
+    
+    float4 pos = positions[i];
+    float3 vel = velocities[i];
+    
+    // Update position
+    pos.x += vel.x * dt;
+    pos.y += vel.y * dt;
+    pos.z += vel.z * dt;
+    
+    // Apply periodic boundary conditions
+    pos.x = pos.x - box_size * floorf(pos.x / box_size);
+    pos.y = pos.y - box_size * floorf(pos.y / box_size);
+    pos.z = pos.z - box_size * floorf(pos.z / box_size);
+    
+    positions[i] = pos;
+}
+
 // CUDA error checking macro
 #define CUDA_CHECK(call) do { \
     cudaError_t error = call; \
