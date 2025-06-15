@@ -1,4 +1,5 @@
 #include "forces/force_computer_factory.hpp"
+#include "forces/tree_force_computer.hpp"
 #include <iostream>
 
 namespace forces {
@@ -126,12 +127,13 @@ ForceComputeMethod ForceComputerFactory::select_optimal_method(
 }
 
 void ForceComputerFactory::register_all_builtin_computers() {
-    // Placeholder implementations - these would register actual classes
     std::cout << "Registering built-in force computers..." << std::endl;
     
-    // TODO: Register actual implementations
+    // Register TreeForceComputer
+    register_force_computer<TreeForceComputer>("TreeForceComputer");
+    
+    // TODO: Register other implementations
     // register_force_computer<DirectForceComputer>("DirectForceComputer");
-    // register_force_computer<TreeForceComputer>("TreeForceComputer");
     // register_force_computer<PMForceComputer>("PMForceComputer");
     // register_force_computer<TensorRTForceComputer>("TensorRTForceComputer");
 }

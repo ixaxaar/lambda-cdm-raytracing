@@ -53,6 +53,7 @@ __global__ void compute_morton_codes_kernel(
 
 // Find common prefix length between two Morton codes
 __device__ inline int common_prefix_length(uint32_t a, uint32_t b) {
+    if (a == b) return 32; // All bits match
     return __clz(a ^ b);
 }
 
@@ -67,8 +68,12 @@ __global__ void build_internal_nodes_kernel(
     if (tid >= num_particles - 1) return;
     
     // Determine direction of the range (+1 or -1)
-    int d = (common_prefix_length(sorted_morton_codes[tid], sorted_morton_codes[tid + 1]) >
-             common_prefix_length(sorted_morton_codes[tid], sorted_morton_codes[tid - 1])) ? 1 : -1;
+    int d = 1;
+    if (tid > 0) {
+        int delta_plus = common_prefix_length(sorted_morton_codes[tid], sorted_morton_codes[tid + 1]);
+        int delta_minus = common_prefix_length(sorted_morton_codes[tid], sorted_morton_codes[tid - 1]);
+        d = (delta_plus > delta_minus) ? 1 : -1;
+    }
     
     // Compute upper bound for the length of the range
     int delta_min = common_prefix_length(sorted_morton_codes[tid], sorted_morton_codes[tid - d]);
@@ -161,8 +166,8 @@ __global__ void compute_mass_centers_kernel(
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= num_internal_nodes) return;
     
-    // Simple bottom-up approach: process all internal nodes
-    int internal_idx = num_internal_nodes + tid;  // Internal nodes start after leaves
+    // Process internal nodes: they are indexed starting from num_particles
+    int internal_idx = num_internal_nodes + tid;
     TreeNode& node = nodes[internal_idx];
     
     // Compute center of mass and bounds from children

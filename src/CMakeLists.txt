@@ -5,6 +5,7 @@ set(CORE_SOURCES
     core/component_registry.cpp
     core/simulation_engine.cpp
     forces/force_computer_factory.cpp
+    forces/tree_force_computer.cpp
     physics/cosmology_model.cpp
 )
 

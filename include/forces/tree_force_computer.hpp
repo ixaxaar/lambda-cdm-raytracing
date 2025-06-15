@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/interfaces.hpp"
+#include "core/math_types.hpp"
 #include "force_computer_factory.hpp"
 #include <memory>
 #include <vector>
@@ -53,7 +54,8 @@ private:
     mutable size_t tree_traversals_;
     
 public:
-    TreeForceComputer(const std::string& name, float theta = 0.5f, 
+    explicit TreeForceComputer(const std::string& name);
+    TreeForceComputer(const std::string& name, float theta, 
                      size_t leaf_capacity = 8, int max_depth = 20);
     ~TreeForceComputer();
     
@@ -125,7 +127,12 @@ private:
     void cleanup_gpu_resources();
     void upload_tree_to_gpu();
     void compute_forces_gpu(const float* positions, const float* masses,
-                           float* forces, size_t num_particles) const;
+                           float* forces, size_t num_particles);
+    
+    // CPU methods
+    void compute_forces_cpu(const float* positions, const float* masses,
+                           float* forces, size_t num_particles);
+    void build_tree_cpu(const float* positions, const float* masses, size_t num_particles);
     
     // Tree traversal on GPU
     void launch_tree_traversal_kernel(const float* positions, const float* masses,
@@ -139,17 +146,17 @@ private:
     int compute_tree_depth(const OctreeNode* node) const;
 };
 
-// CUDA kernels (declarations)
+// CUDA kernels declarations (only when needed)
+#ifdef HAVE_CUDA
 extern "C" {
     void launch_tree_force_kernel(const float* positions, const float* masses,
                                  float* forces, const OctreeNode* tree_nodes,
-                                 size_t num_particles, float theta,
-                                 cudaStream_t stream);
+                                 size_t num_particles, float theta);
     
     void launch_tree_build_kernel(const float* positions, const float* masses,
                                  OctreeNode* tree_nodes, size_t num_particles,
-                                 float box_size, size_t leaf_capacity,
-                                 cudaStream_t stream);
+                                 float box_size, size_t leaf_capacity);
 }
+#endif
 
 }
