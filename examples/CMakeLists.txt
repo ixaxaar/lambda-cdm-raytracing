@@ -37,6 +37,12 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/zeldovich_test.cpp")
     target_link_libraries(zeldovich_test lambda_cdm_core)
 endif()
 
+# 2LPT test
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/2lpt_test.cpp")
+    add_executable(2lpt_test 2lpt_test.cpp)
+    target_link_libraries(2lpt_test lambda_cdm_core)
+endif()
+
 # Advanced examples (when implementations are complete)
 # add_executable(cluster_simulation cluster_simulation.cpp)
 # add_executable(tensorrt_optimization tensorrt_optimization.cpp)

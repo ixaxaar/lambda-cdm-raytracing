@@ -40,6 +40,7 @@ struct InitialConditionsParams {
     // Output options
     bool generate_velocities = true;  // Generate velocity field
     bool apply_glass = false;         // Apply glass-like pre-initial conditions
+    bool use_2lpt = false;            // Use 2LPT instead of Zel'dovich
     
     // Custom power spectrum function (if ps_type == CUSTOM)
     std::function<double(double)> custom_power_spectrum;
@@ -166,8 +167,22 @@ public:
     const InitialConditionsParams& get_params() const { return params_; }
     const CosmologyModel& get_cosmology() const { return cosmology_; }
     
-    // Advanced methods for higher-order perturbation theory
+    // Advanced methods for higher-order perturbation theory (2LPT)
     void apply_second_order_corrections(
+        std::vector<float3>& positions,
+        std::vector<float3>& velocities) const;
+    
+    // 2LPT implementation methods
+    void compute_2lpt_displacement_field(
+        const std::vector<std::complex<double>>& delta_k,
+        std::vector<float3>& displacements_2lpt) const;
+    
+    void compute_second_order_kernel(
+        const std::vector<std::complex<double>>& delta_k,
+        std::vector<std::complex<double>>& delta_2_k) const;
+    
+    void apply_2lpt_approximation(
+        const std::vector<std::complex<double>>& delta_k,
         std::vector<float3>& positions,
         std::vector<float3>& velocities) const;
     
