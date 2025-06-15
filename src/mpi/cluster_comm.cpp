@@ -6,9 +6,10 @@
 namespace mpi {
 
 ClusterCommunicator::ClusterCommunicator(MPI_Comm comm, float ghost_width)
-    : comm_(comm), ghost_zone_width_(ghost_width) {
+    : comm_(comm), ghost_zone_width_(ghost_width), box_size_(0.0f) {
     MPI_Comm_rank(comm_, &domain_.rank);
     MPI_Comm_size(comm_, &domain_.size);
+    dims_[0] = dims_[1] = dims_[2] = 0;
 }
 
 ClusterCommunicator::~ClusterCommunicator() {
@@ -16,14 +17,18 @@ ClusterCommunicator::~ClusterCommunicator() {
 }
 
 bool ClusterCommunicator::initialize(float box_size) {
+    box_size_ = box_size;
     decompose_domain(box_size);
     return true;
 }
 
 void ClusterCommunicator::decompose_domain(float box_size) {
+    box_size_ = box_size;
     // Simple 3D domain decomposition
-    int dims[3] = {0, 0, 0};
-    MPI_Dims_create(domain_.size, 3, dims);
+    dims_[0] = dims_[1] = dims_[2] = 0;
+    MPI_Dims_create(domain_.size, 3, dims_);
+    
+    int dims[3] = {dims_[0], dims_[1], dims_[2]};
     
     int coords[3];
     int rank_temp = domain_.rank;
@@ -91,17 +96,11 @@ void ClusterCommunicator::exchange_particles(std::vector<physics::Particle>& par
         if (is_particle_local(particle)) {
             local_particles.push_back(particle);
         } else {
-            // Determine which rank should own this particle
-            int target_rank = 0;
-            // Simple assignment based on position
-            // In practice, this would be more sophisticated
-            for (int rank = 0; rank < domain_.size; ++rank) {
-                // Check if particle belongs to this rank's domain
-                // This is a simplified version
-                target_rank = rank;
-                break;
+            // Determine which rank should own this particle based on position
+            int target_rank = find_owner_rank(particle.position);
+            if (target_rank >= 0 && target_rank < domain_.size) {
+                export_lists[target_rank].push_back(particle);
             }
-            export_lists[target_rank].push_back(particle);
         }
     }
     
@@ -139,26 +138,25 @@ void ClusterCommunicator::exchange_particles(std::vector<physics::Particle>& par
         offset += export_lists[rank].size();
     }
     
-    // MPI data type for Particle structure
-    MPI_Datatype particle_type;
-    int block_lengths[4] = {3, 3, 1, 1}; // position, velocity, mass, id
-    MPI_Aint displacements[4];
-    MPI_Datatype types[4] = {MPI_FLOAT, MPI_FLOAT, MPI_FLOAT, MPI_INT};
+    // Use MPI_BYTE for simplicity - in production, custom MPI datatype would be better
+    size_t particle_size = sizeof(physics::Particle);
     
-    displacements[0] = offsetof(physics::Particle, position);
-    displacements[1] = offsetof(physics::Particle, velocity);
-    displacements[2] = offsetof(physics::Particle, mass);
-    displacements[3] = offsetof(physics::Particle, id);
+    // Perform the exchange using MPI_BYTE
+    std::vector<int> send_byte_counts(domain_.size);
+    std::vector<int> recv_byte_counts(domain_.size);
+    std::vector<int> send_byte_displs(domain_.size);
+    std::vector<int> recv_byte_displs(domain_.size);
     
-    MPI_Type_create_struct(4, block_lengths, displacements, types, &particle_type);
-    MPI_Type_commit(&particle_type);
+    for (int i = 0; i < domain_.size; ++i) {
+        send_byte_counts[i] = send_counts[i] * particle_size;
+        recv_byte_counts[i] = recv_counts[i] * particle_size;
+        send_byte_displs[i] = send_displs[i] * particle_size;
+        recv_byte_displs[i] = recv_displs[i] * particle_size;
+    }
     
-    // Perform the exchange
-    MPI_Alltoallv(send_buffer_.data(), send_counts.data(), send_displs.data(), particle_type,
-                  recv_buffer_.data(), recv_counts.data(), recv_displs.data(), particle_type,
+    MPI_Alltoallv(send_buffer_.data(), send_byte_counts.data(), send_byte_displs.data(), MPI_BYTE,
+                  recv_buffer_.data(), recv_byte_counts.data(), recv_byte_displs.data(), MPI_BYTE,
                   comm_);
-    
-    MPI_Type_free(&particle_type);
     
     // Update particle list
     particles = local_particles;
@@ -234,12 +232,18 @@ void ClusterCommunicator::gather_all_particles(const std::vector<physics::Partic
     int total_particles = displs[domain_.size-1] + counts[domain_.size-1];
     all_particles.resize(total_particles);
     
+    // Convert counts and displacements to bytes
+    std::vector<int> byte_counts(domain_.size);
+    std::vector<int> byte_displs(domain_.size);
+    
+    for (int i = 0; i < domain_.size; ++i) {
+        byte_counts[i] = counts[i] * sizeof(physics::Particle);
+        byte_displs[i] = displs[i] * sizeof(physics::Particle);
+    }
+    
     // Gather all particles
     MPI_Allgatherv(local_particles.data(), local_count * sizeof(physics::Particle), MPI_BYTE,
-                   all_particles.data(), 
-                   reinterpret_cast<int*>(counts.data()), 
-                   reinterpret_cast<int*>(displs.data()), 
-                   MPI_BYTE, comm_);
+                   all_particles.data(), byte_counts.data(), byte_displs.data(), MPI_BYTE, comm_);
 }
 
 bool ClusterCommunicator::is_particle_local(const physics::Particle& particle) const {
@@ -271,6 +275,40 @@ bool ClusterCommunicator::is_particle_ghost(const physics::Particle& particle) c
             particle.position.z >= expanded_min.z &&
             particle.position.z < expanded_max.z) &&
            !is_particle_local(particle);
+}
+
+int ClusterCommunicator::find_owner_rank(const float3& position) const {
+    if (dims_[0] == 0 || dims_[1] == 0 || dims_[2] == 0 || box_size_ <= 0.0f) {
+        return -1; // Invalid state
+    }
+    
+    // Handle periodic boundary conditions
+    float3 wrapped_pos = position;
+    while (wrapped_pos.x < 0.0f) wrapped_pos.x += box_size_;
+    while (wrapped_pos.x >= box_size_) wrapped_pos.x -= box_size_;
+    while (wrapped_pos.y < 0.0f) wrapped_pos.y += box_size_;
+    while (wrapped_pos.y >= box_size_) wrapped_pos.y -= box_size_;
+    while (wrapped_pos.z < 0.0f) wrapped_pos.z += box_size_;
+    while (wrapped_pos.z >= box_size_) wrapped_pos.z -= box_size_;
+    
+    // Calculate domain indices
+    float dx = box_size_ / dims_[0];
+    float dy = box_size_ / dims_[1];
+    float dz = box_size_ / dims_[2];
+    
+    int coord_x = static_cast<int>(wrapped_pos.x / dx);
+    int coord_y = static_cast<int>(wrapped_pos.y / dy);
+    int coord_z = static_cast<int>(wrapped_pos.z / dz);
+    
+    // Clamp to valid range
+    coord_x = std::min(coord_x, dims_[0] - 1);
+    coord_y = std::min(coord_y, dims_[1] - 1);
+    coord_z = std::min(coord_z, dims_[2] - 1);
+    
+    // Calculate rank from coordinates
+    int target_rank = coord_x * dims_[1] * dims_[2] + coord_y * dims_[2] + coord_z;
+    
+    return target_rank;
 }
 
 LoadBalancer::LoadBalancer(ClusterCommunicator* comm) : comm_(comm) {

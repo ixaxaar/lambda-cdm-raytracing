@@ -3,6 +3,7 @@
 #include <mpi.h>
 #include <vector>
 #include <memory>
+#include <cstdint>
 #include "physics/lambda_cdm.hpp"
 
 namespace mpi {
@@ -25,6 +26,8 @@ private:
     std::vector<physics::Particle> recv_buffer_;
 
     float ghost_zone_width_;
+    float box_size_;
+    int dims_[3];
 
 public:
     ClusterCommunicator(MPI_Comm comm = MPI_COMM_WORLD, float ghost_width = 0.1f);
@@ -46,6 +49,7 @@ public:
 
     bool is_particle_local(const physics::Particle& particle) const;
     bool is_particle_ghost(const physics::Particle& particle) const;
+    int find_owner_rank(const float3& position) const;
 };
 
 class LoadBalancer {
@@ -61,5 +65,21 @@ public:
     bool needs_rebalancing(double threshold = 0.2) const;
     void rebalance_domain(float box_size);
 };
+
+// Domain decomposition utilities
+void adaptive_domain_decomposition(const std::vector<physics::Particle>& particles,
+                                 float box_size, int num_processes,
+                                 std::vector<float3>& domain_bounds);
+
+void uniform_domain_decomposition(float box_size, int num_processes,
+                                std::vector<float3>& domain_bounds);
+
+void morton_order_traversal(const std::vector<std::vector<std::vector<int>>>& density_grid,
+                          std::vector<int>& cell_counts);
+
+uint32_t morton_encode_3d(uint32_t x, uint32_t y, uint32_t z);
+
+void distribute_cells_by_load(const std::vector<int>& cell_counts, int num_processes,
+                            std::vector<float3>& domain_bounds, float box_size, int grid_res);
 
 }
