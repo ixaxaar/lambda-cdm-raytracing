@@ -41,6 +41,8 @@ private:
     std::unique_ptr<nvinfer1::ICudaEngine> engine_;
     std::unique_ptr<nvinfer1::IExecutionContext> context_;
 
+    void* bindings_[3];  // positions_in, masses_in, forces_out
+    cudaStream_t stream_;
     float theta_; // Opening angle for tree approximation
 
 public:

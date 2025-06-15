@@ -1,4 +1,5 @@
 #include "tensorrt/nbody_engine.hpp"
+#include "tensorrt/nbody_plugins.hpp"
 #include <fstream>
 #include <iostream>
 #include <cassert>
@@ -42,6 +43,10 @@ NBodyEngine::~NBodyEngine() {
 }
 
 bool NBodyEngine::build_engine() {
+    // Register custom plugins
+    static NBodyForcePluginCreator nbody_creator;
+    nvinfer1::getPluginRegistry()->registerCreator(nbody_creator, "");
+    
     auto builder = std::unique_ptr<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(gLogger));
     if (!builder) return false;
@@ -63,27 +68,31 @@ bool NBodyEngine::build_engine() {
     
     if (!positions || !masses) return false;
     
-    // Create custom N-body force computation layer
-    // This would typically involve implementing a custom TensorRT plugin
-    // For now, we'll create a simplified version using existing layers
+    // Create plugin field collection for N-body force plugin
+    std::vector<nvinfer1::PluginField> plugin_fields;
+    plugin_fields.emplace_back("softening", &softening_length_, 
+                              nvinfer1::PluginFieldType::kFLOAT32, 1);
+    int max_particles = static_cast<int>(max_particles_);
+    plugin_fields.emplace_back("max_particles", &max_particles,
+                              nvinfer1::PluginFieldType::kINT32, 1);
     
-    // Expand positions for pairwise computation
-    auto pos_expanded = network->addShuffle(*positions);
-    pos_expanded->setReshapeDimensions(
-        nvinfer1::Dims4{static_cast<int>(max_particles_), 1, 3, 1});
+    nvinfer1::PluginFieldCollection plugin_data;
+    plugin_data.nbFields = plugin_fields.size();
+    plugin_data.fields = plugin_fields.data();
     
-    // Tile positions for all pairs
-    auto pos_tiled = network->addShuffle(*pos_expanded->getOutput(0));
-    pos_tiled->setReshapeDimensions(
-        nvinfer1::Dims4{static_cast<int>(max_particles_), 
-                       static_cast<int>(max_particles_), 3, 1});
+    // Create N-body force plugin
+    auto nbody_plugin = nbody_creator.createPlugin("nbody_force", &plugin_data);
+    if (!nbody_plugin) return false;
     
-    // Create force computation network (simplified)
-    // In practice, this would use a custom plugin for efficiency
+    // Add plugin layer to network
+    std::vector<nvinfer1::ITensor*> plugin_inputs = {positions, masses};
+    auto nbody_layer = network->addPluginV2(plugin_inputs.data(), 
+                                           plugin_inputs.size(), *nbody_plugin);
+    if (!nbody_layer) return false;
     
-    // Output layers
-    network->markOutput(*pos_tiled->getOutput(0)); // forces placeholder
-    network->markOutput(*masses->getOutput(0));    // potential placeholder
+    // Mark outputs
+    network->markOutput(*nbody_layer->getOutput(0)); // forces
+    network->markOutput(*nbody_layer->getOutput(1)); // potential
     
     // Set optimization profiles
     auto profile = builder->createOptimizationProfile();
@@ -197,24 +206,144 @@ void NBodyEngine::compute_forces(const float* positions, const float* masses,
 }
 
 TreeCodeEngine::TreeCodeEngine(float theta) : theta_(theta) {
-    // Implementation for tree-based force computation
-    // This would use a more sophisticated TensorRT network
-    // with custom plugins for octree traversal
+    for (int i = 0; i < 3; ++i) {
+        bindings_[i] = nullptr;
+    }
 }
 
-TreeCodeEngine::~TreeCodeEngine() = default;
+TreeCodeEngine::~TreeCodeEngine() {
+    for (int i = 0; i < 3; ++i) {
+        if (bindings_[i]) {
+            cudaFree(bindings_[i]);
+        }
+    }
+    if (bindings_[0]) { // Only destroy if we created it
+        cudaStreamDestroy(stream_);
+    }
+}
 
 bool TreeCodeEngine::build_engine() {
-    // Implementation for building tree-based force computation engine
-    // This is more complex and would require custom TensorRT plugins
-    return false; // Placeholder
+    // Register custom plugins
+    static TreeForcePluginCreator tree_creator;
+    nvinfer1::getPluginRegistry()->registerCreator(tree_creator, "");
+    
+    auto builder = std::unique_ptr<nvinfer1::IBuilder>(
+        nvinfer1::createInferBuilder(gLogger));
+    if (!builder) return false;
+    
+    auto config = std::unique_ptr<nvinfer1::IBuilderConfig>(
+        builder->createBuilderConfig());
+    if (!config) return false;
+    
+    auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(
+        builder->createNetworkV2(1U << static_cast<uint32_t>(
+            nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+    if (!network) return false;
+    
+    // Input tensors
+    auto positions = network->addInput("positions", nvinfer1::DataType::kFLOAT,
+        nvinfer1::Dims3{100000, 3, 1}); // Default max size
+    auto masses = network->addInput("masses", nvinfer1::DataType::kFLOAT,
+        nvinfer1::Dims2{100000, 1});
+    
+    if (!positions || !masses) return false;
+    
+    // Create plugin field collection for tree force plugin
+    std::vector<nvinfer1::PluginField> plugin_fields;
+    plugin_fields.emplace_back("theta", &theta_, 
+                              nvinfer1::PluginFieldType::kFLOAT32, 1);
+    int max_particles = 100000;
+    plugin_fields.emplace_back("max_particles", &max_particles,
+                              nvinfer1::PluginFieldType::kINT32, 1);
+    
+    nvinfer1::PluginFieldCollection plugin_data;
+    plugin_data.nbFields = plugin_fields.size();
+    plugin_data.fields = plugin_fields.data();
+    
+    // Create tree force plugin
+    auto tree_plugin = tree_creator.createPlugin("tree_force", &plugin_data);
+    if (!tree_plugin) return false;
+    
+    // Add plugin layer to network
+    std::vector<nvinfer1::ITensor*> plugin_inputs = {positions, masses};
+    auto tree_layer = network->addPluginV2(plugin_inputs.data(), 
+                                          plugin_inputs.size(), *tree_plugin);
+    if (!tree_layer) return false;
+    
+    // Mark output
+    network->markOutput(*tree_layer->getOutput(0)); // forces
+    
+    // Set optimization profiles
+    auto profile = builder->createOptimizationProfile();
+    profile->setDimensions("positions", nvinfer1::OptProfileSelector::kMIN,
+        nvinfer1::Dims3{1, 3, 1});
+    profile->setDimensions("positions", nvinfer1::OptProfileSelector::kOPT,
+        nvinfer1::Dims3{50000, 3, 1});
+    profile->setDimensions("positions", nvinfer1::OptProfileSelector::kMAX,
+        nvinfer1::Dims3{100000, 3, 1});
+    
+    profile->setDimensions("masses", nvinfer1::OptProfileSelector::kMIN,
+        nvinfer1::Dims2{1, 1});
+    profile->setDimensions("masses", nvinfer1::OptProfileSelector::kOPT,
+        nvinfer1::Dims2{50000, 1});
+    profile->setDimensions("masses", nvinfer1::OptProfileSelector::kMAX,
+        nvinfer1::Dims2{100000, 1});
+    
+    config->addOptimizationProfile(profile);
+    
+    // Enable FP16 precision for performance
+    config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    
+    // Build engine
+    engine_ = std::unique_ptr<nvinfer1::ICudaEngine>(
+        builder->buildEngineWithConfig(*network, *config));
+    
+    if (!engine_) return false;
+    
+    // Create execution context
+    context_ = std::unique_ptr<nvinfer1::IExecutionContext>(
+        engine_->createExecutionContext());
+    
+    return context_ != nullptr;
 }
 
 void TreeCodeEngine::compute_forces_tree(const float* positions, 
                                         const float* masses,
                                         float* forces, size_t num_particles) {
-    // Implementation for tree-based force computation
-    // Would use Barnes-Hut algorithm implemented as TensorRT custom layer
+    if (!context_ || num_particles > 100000) return;
+    
+    // Allocate GPU memory if not already done
+    if (!bindings_[0]) {
+        cudaMalloc(&bindings_[0], 100000 * 3 * sizeof(float)); // positions
+        cudaMalloc(&bindings_[1], 100000 * sizeof(float));     // masses
+        cudaMalloc(&bindings_[2], 100000 * 3 * sizeof(float)); // forces
+        cudaStreamCreate(&stream_);
+    }
+    
+    // Copy input data to GPU
+    cudaMemcpyAsync(bindings_[0], positions, 
+                   num_particles * 3 * sizeof(float),
+                   cudaMemcpyHostToDevice, stream_);
+    cudaMemcpyAsync(bindings_[1], masses,
+                   num_particles * sizeof(float),
+                   cudaMemcpyHostToDevice, stream_);
+    
+    // Set input binding dimensions
+    context_->setBindingDimensions(0, 
+        nvinfer1::Dims3{static_cast<int>(num_particles), 3, 1});
+    context_->setBindingDimensions(1,
+        nvinfer1::Dims2{static_cast<int>(num_particles), 1});
+    
+    // Execute inference
+    bool success = context_->enqueueV2(bindings_, stream_, nullptr);
+    if (!success) return;
+    
+    // Copy results back to host
+    cudaMemcpyAsync(forces, bindings_[2],
+                   num_particles * 3 * sizeof(float),
+                   cudaMemcpyDeviceToHost, stream_);
+    
+    cudaStreamSynchronize(stream_);
 }
 
 }

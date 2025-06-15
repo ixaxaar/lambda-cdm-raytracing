@@ -48,6 +48,9 @@ if(HAVE_TENSORRT)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tensorrt/nbody_engine.cpp")
         list(APPEND SOURCES tensorrt/nbody_engine.cpp)
     endif()
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tensorrt/nbody_plugins.cu")
+        list(APPEND SOURCES tensorrt/nbody_plugins.cu)
+    endif()
 endif()
 
 # Create the core library
