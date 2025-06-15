@@ -7,6 +7,7 @@ set(CORE_SOURCES
     forces/force_computer_factory.cpp
     forces/tree_force_computer.cpp
     physics/cosmology_model.cpp
+    physics/initial_conditions.cpp
 )
 
 # Conditional sources based on available features

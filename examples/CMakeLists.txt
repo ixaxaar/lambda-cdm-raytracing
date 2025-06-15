@@ -31,6 +31,12 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cosmology_test.cpp")
     target_link_libraries(cosmology_test lambda_cdm_core)
 endif()
 
+# Zel'dovich approximation test
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/zeldovich_test.cpp")
+    add_executable(zeldovich_test zeldovich_test.cpp)
+    target_link_libraries(zeldovich_test lambda_cdm_core)
+endif()
+
 # Advanced examples (when implementations are complete)
 # add_executable(cluster_simulation cluster_simulation.cpp)
 # add_executable(tensorrt_optimization tensorrt_optimization.cpp)
