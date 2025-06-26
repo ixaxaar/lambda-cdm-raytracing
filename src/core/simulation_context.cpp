@@ -19,7 +19,7 @@ SimulationContext::SimulationContext()
       cuda_device_id_(0),
       mpi_rank_(0),
       mpi_size_(1) {
-    
+
 #ifdef HAVE_CUDA
     // TODO: Initialize GPU resource manager when implementation is ready
     // resource_manager_ = std::make_unique<GPUResourceManager>();
@@ -28,7 +28,7 @@ SimulationContext::SimulationContext()
     // TODO: CPU-only resource manager
     resource_manager_ = nullptr;
 #endif
-    
+
     // TODO: Initialize profiler
     profiler_ = nullptr;
 }
@@ -43,15 +43,15 @@ bool SimulationContext::initialize(const std::string& config_file) {
         if (!config_manager_->load_from_file(config_file)) {
             return false;
         }
-        
+
         // Initialize resource manager
         if (resource_manager_) {
             // TODO: Initialize with configuration parameters
         }
-        
+
         // Generate simulation ID
         simulation_id_ = generate_simulation_id();
-        
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to initialize simulation context: " << e.what() << std::endl;
@@ -62,12 +62,12 @@ bool SimulationContext::initialize(const std::string& config_file) {
 void SimulationContext::finalize() {
     // Notify observers
     notify_simulation_end();
-    
+
     // Clean up components
     if (component_registry_) {
         component_registry_->finalize_all_components();
     }
-    
+
     // Clean up resources
     if (resource_manager_) {
         // TODO: Cleanup resource manager
@@ -134,7 +134,7 @@ void SimulationContext::remove_parameter(const std::string& key) {
 std::string SimulationContext::get_timestamp() const {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
-    
+
     std::stringstream ss;
     ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
     return ss.str();

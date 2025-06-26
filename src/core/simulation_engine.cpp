@@ -13,7 +13,7 @@ SimulationEngine::SimulationEngine()
       output_directory_("output"),
       should_stop_(false),
       is_initialized_(false) {
-    
+
     // Initialize statistics
     statistics_ = {};
 }
@@ -36,32 +36,32 @@ bool SimulationEngine::initialize(std::unique_ptr<SimulationContext> context) {
     if (!context) {
         return false;
     }
-    
+
     context_ = std::move(context);
-    
+
     try {
         // Initialize context
         if (!validate_configuration()) {
             state_ = SimulationState::ERROR;
             return false;
         }
-        
+
         if (!initialize_components()) {
             state_ = SimulationState::ERROR;
             return false;
         }
-        
+
         if (!initialize_simulation_data()) {
             state_ = SimulationState::ERROR;
             return false;
         }
-        
+
         state_ = SimulationState::INITIALIZED;
         is_initialized_ = true;
-        
+
         std::cout << "Simulation initialized successfully" << std::endl;
         return true;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Exception during initialization: " << e.what() << std::endl;
         state_ = SimulationState::ERROR;
@@ -73,7 +73,7 @@ void SimulationEngine::finalize() {
     if (context_) {
         context_->finalize();
     }
-    
+
     deallocate_simulation_arrays();
     state_ = SimulationState::UNINITIALIZED;
     is_initialized_ = false;
@@ -84,34 +84,34 @@ bool SimulationEngine::run() {
         std::cerr << "Simulation not properly initialized" << std::endl;
         return false;
     }
-    
+
     state_ = SimulationState::RUNNING;
     should_stop_ = false;
-    
+
     // Notify observers
     on_simulation_start();
-    
+
     std::cout << "Starting simulation..." << std::endl;
-    
+
     // Main simulation loop
     while (should_continue()) {
         if (!step()) {
             state_ = SimulationState::ERROR;
             break;
         }
-        
+
         if (should_stop_) {
             break;
         }
     }
-    
+
     // Finalize
     if (state_ == SimulationState::RUNNING) {
         state_ = SimulationState::FINISHED;
     }
-    
+
     on_simulation_end();
-    
+
     return state_ == SimulationState::FINISHED;
 }
 
@@ -119,34 +119,34 @@ bool SimulationEngine::step() {
     if (state_ != SimulationState::RUNNING) {
         return false;
     }
-    
+
     on_step_start();
-    
+
     try {
         // Update simulation state
         update_simulation_state();
-        
+
         // Perform simulation step
         compute_forces();
         integrate_step();
         update_cosmology();
-        
+
         // Update statistics
         update_statistics();
-        
+
         // Output if needed
         if (should_output()) {
             output_snapshot();
         }
-        
+
         // Checkpoint if needed
         if (should_checkpoint()) {
             create_periodic_checkpoint();
         }
-        
+
         on_step_end();
         return true;
-        
+
     } catch (const std::exception& e) {
         handle_error("Exception during simulation step: " + std::string(e.what()));
         return false;
@@ -182,18 +182,18 @@ bool SimulationEngine::validate_configuration() {
     if (!context_) {
         return false;
     }
-    
+
     // Basic validation
     auto& config = context_->get_config();
-    
+
     // Check required parameters
     if (!config.has("particles.num_particles")) {
         std::cerr << "Missing required parameter: particles.num_particles" << std::endl;
         return false;
     }
-    
+
     context_->set_num_particles(config.get<size_t>("particles.num_particles", 10000));
-    
+
     std::cout << "Configuration validated" << std::endl;
     return true;
 }
@@ -202,10 +202,10 @@ bool SimulationEngine::initialize_components() {
     if (!context_) {
         return false;
     }
-    
+
     // TODO: Initialize all registered components
     // This would be implemented when component registry is fully integrated
-    
+
     std::cout << "Components initialized" << std::endl;
     return true;
 }
@@ -214,36 +214,36 @@ bool SimulationEngine::initialize_simulation_data() {
     if (!context_) {
         return false;
     }
-    
+
     size_t num_particles = context_->get_num_particles();
-    
+
     if (!allocate_simulation_arrays()) {
         return false;
     }
-    
+
     // Initialize particles (placeholder)
     for (size_t i = 0; i < num_particles; ++i) {
         positions_[i * 3 + 0] = 0.0f;  // x
         positions_[i * 3 + 1] = 0.0f;  // y
         positions_[i * 3 + 2] = 0.0f;  // z
-        
+
         velocities_[i * 3 + 0] = 0.0f;  // vx
         velocities_[i * 3 + 1] = 0.0f;  // vy
         velocities_[i * 3 + 2] = 0.0f;  // vz
-        
+
         masses_[i] = 1.0f;
-        
+
         forces_[i * 3 + 0] = 0.0f;  // fx
         forces_[i * 3 + 1] = 0.0f;  // fy
         forces_[i * 3 + 2] = 0.0f;  // fz
     }
-    
+
     std::cout << "Simulation data initialized for " << num_particles << " particles" << std::endl;
     return true;
 }
 
 bool SimulationEngine::should_continue() const {
-    return statistics_.current_step < max_steps_ && 
+    return statistics_.current_step < max_steps_ &&
            statistics_.current_time < max_time_ &&
            !should_stop_;
 }
@@ -268,7 +268,7 @@ void SimulationEngine::update_statistics() {
     // Update performance statistics
     statistics_.total_steps = statistics_.current_step;
     statistics_.total_time = statistics_.current_time;
-    
+
     // TODO: Update detailed performance metrics
 }
 
@@ -323,13 +323,13 @@ void SimulationEngine::handle_error(const std::string& error_message) {
 
 bool SimulationEngine::allocate_simulation_arrays() {
     size_t num_particles = context_->get_num_particles();
-    
+
     try {
         positions_ = std::make_unique<float[]>(num_particles * 3);
         velocities_ = std::make_unique<float[]>(num_particles * 3);
         masses_ = std::make_unique<float[]>(num_particles);
         forces_ = std::make_unique<float[]>(num_particles * 3);
-        
+
         return true;
     } catch (const std::bad_alloc& e) {
         std::cerr << "Failed to allocate simulation arrays: " << e.what() << std::endl;
@@ -378,7 +378,7 @@ float3 SimulationEngine::compute_angular_momentum() const {
 }
 
 // SimulationBuilder implementation
-SimulationBuilder::SimulationBuilder() 
+SimulationBuilder::SimulationBuilder()
     : context_(std::make_unique<SimulationContext>()) {
 }
 
@@ -446,15 +446,15 @@ SimulationBuilder& SimulationBuilder::enable_tensorrt(const std::string& engine_
 
 std::unique_ptr<SimulationEngine> SimulationBuilder::build() {
     auto engine = std::make_unique<SimulationEngine>();
-    
+
     if (!config_file_.empty()) {
         context_->initialize(config_file_);
     }
-    
+
     if (engine->initialize(std::move(context_))) {
         return engine;
     }
-    
+
     return nullptr;
 }
 

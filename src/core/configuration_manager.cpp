@@ -4,7 +4,7 @@
 
 namespace core {
 
-ConfigurationManager::ConfigurationManager() 
+ConfigurationManager::ConfigurationManager()
     : root_(std::make_unique<ConfigurationNode>("root")) {
 }
 
@@ -12,13 +12,13 @@ ConfigurationManager::~ConfigurationManager() = default;
 
 bool ConfigurationManager::load_from_file(const std::string& filename) {
     config_file_path_ = filename;
-    
+
     // For now, just return true - actual implementation would parse JSON/YAML
     std::cout << "Loading configuration from: " << filename << std::endl;
-    
+
     // Set up default configuration
     setup_default_simulation_config();
-    
+
     return true;
 }
 
@@ -45,16 +45,16 @@ void ConfigurationManager::setup_default_simulation_config() {
     root_->set_path("simulation.name", std::string("Lambda-CDM Simulation"));
     root_->set_path("simulation.output_directory", std::string("output"));
     root_->set_path("simulation.checkpoint_frequency", 100);
-    
+
     // Default physics parameters
     root_->set_path("physics.cosmology.omega_m", 0.31);
     root_->set_path("physics.cosmology.omega_lambda", 0.69);
     root_->set_path("physics.cosmology.h", 0.67);
-    
+
     // Default particle parameters
     root_->set_path("particles.num_particles", 10000);
     root_->set_path("particles.box_size", 100.0);
-    
+
     // Default time parameters
     root_->set_path("time.initial_time", 0.0);
     root_->set_path("time.final_time", 10.0);
@@ -76,15 +76,15 @@ void ConfigurationManager::setup_default_io_config() {
 void ConfigurationManager::print_configuration() const {
     std::cout << "Configuration Summary:" << std::endl;
     std::cout << "=====================" << std::endl;
-    
+
     if (root_->has_path("simulation.name")) {
         std::cout << "Simulation: " << root_->get_path<std::string>("simulation.name") << std::endl;
     }
-    
+
     if (root_->has_path("particles.num_particles")) {
         std::cout << "Particles: " << root_->get_path<int>("particles.num_particles") << std::endl;
     }
-    
+
     if (root_->has_path("particles.box_size")) {
         std::cout << "Box size: " << root_->get_path<double>("particles.box_size") << std::endl;
     }
