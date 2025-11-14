@@ -186,13 +186,16 @@ bool SimulationEngine::validate_configuration() {
     // Basic validation
     auto& config = context_->get_config();
 
-    // Check required parameters
-    if (!config.has("particles.num_particles")) {
+    // Check required parameters - either from config or already set in context
+    if (!config.has("particles.num_particles") && context_->get_num_particles() == 0) {
         std::cerr << "Missing required parameter: particles.num_particles" << std::endl;
         return false;
     }
 
-    context_->set_num_particles(config.get<size_t>("particles.num_particles", 10000));
+    // If config has num_particles, update context
+    if (config.has("particles.num_particles")) {
+        context_->set_num_particles(config.get<size_t>("particles.num_particles", 10000));
+    }
 
     std::cout << "Configuration validated" << std::endl;
     return true;
