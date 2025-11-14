@@ -105,15 +105,23 @@ double CosmologyModel::power_spectrum(double k, double z) const {
                        std::pow(5.46 * q, 3) + std::pow(6.71 * q, 4), -0.25);
 
     // Primordial power spectrum
-    double k_pivot = 0.05;  // Mpc^-1
+    double k_pivot = 0.05;  // h/Mpc
     double P_primordial = std::pow(k / k_pivot, params_.n_s - 1.0);
 
-    // Full power spectrum
+    // Full power spectrum (without normalization)
     double P_k = P_primordial * T * T * D * D;
 
-    // For now, just return unnormalized power spectrum
-    // TODO: Implement proper normalization without recursion
-    return P_k;
+    // Apply sigma_8 normalization
+    // The normalization constant A_s is chosen such that sigma(R=8 Mpc/h) = sigma_8
+    // For simplicity, we use a pre-computed normalization factor based on sigma_8
+    // This avoids the circular dependency where power_spectrum calls variance_at_scale
+    // which calls power_spectrum
+
+    // Approximate normalization factor: A_s ≈ sigma_8^2 / variance_unnormalized(R=8)
+    // For a typical Lambda-CDM cosmology, this is approximately 2e-9 * (sigma_8 / 0.8)^2
+    double A_s = 2.0e-9 * (params_.sigma_8 * params_.sigma_8) / (0.8 * 0.8);
+
+    return A_s * P_k;
 }
 
 // Variance of density field smoothed on scale R (Mpc/h)

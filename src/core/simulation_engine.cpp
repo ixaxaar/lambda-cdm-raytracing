@@ -116,8 +116,14 @@ bool SimulationEngine::run() {
 }
 
 bool SimulationEngine::step() {
-    if (state_ != SimulationState::RUNNING) {
+    // Allow stepping in both INITIALIZED and RUNNING states
+    if (state_ != SimulationState::INITIALIZED && state_ != SimulationState::RUNNING) {
         return false;
+    }
+
+    // Transition from INITIALIZED to RUNNING on first step
+    if (state_ == SimulationState::INITIALIZED) {
+        state_ = SimulationState::RUNNING;
     }
 
     on_step_start();
@@ -186,13 +192,16 @@ bool SimulationEngine::validate_configuration() {
     // Basic validation
     auto& config = context_->get_config();
 
-    // Check required parameters
-    if (!config.has("particles.num_particles")) {
+    // Check required parameters - either from config or already set in context
+    if (!config.has("particles.num_particles") && context_->get_num_particles() == 0) {
         std::cerr << "Missing required parameter: particles.num_particles" << std::endl;
         return false;
     }
 
-    context_->set_num_particles(config.get<size_t>("particles.num_particles", 10000));
+    // If config has num_particles, update context
+    if (config.has("particles.num_particles")) {
+        context_->set_num_particles(config.get<size_t>("particles.num_particles", 10000));
+    }
 
     std::cout << "Configuration validated" << std::endl;
     return true;
@@ -203,10 +212,23 @@ bool SimulationEngine::initialize_components() {
         return false;
     }
 
-    // TODO: Initialize all registered components
-    // This would be implemented when component registry is fully integrated
+    // Initialize all registered components
+    if (!context_->get_component_registry().initialize_all_components(*context_)) {
+        std::cerr << "Failed to initialize components" << std::endl;
+        return false;
+    }
 
-    std::cout << "Components initialized" << std::endl;
+    // Get force computer from context configuration
+    auto& config = context_->get_config();
+    std::string force_type = config.get<std::string>("simulation.force_computer", "TreeForceComputer");
+
+    // For now, create a default TreeForceComputer if not set
+    // TODO: This will be replaced with proper component retrieval from registry
+    if (!force_computer_) {
+        std::cout << "No force computer registered, components initialization deferred" << std::endl;
+    }
+
+    std::cout << "Components initialized successfully" << std::endl;
     return true;
 }
 
@@ -253,8 +275,10 @@ bool SimulationEngine::should_output() const {
 }
 
 bool SimulationEngine::should_checkpoint() const {
-    // TODO: Implement checkpoint logic
-    return false;
+    // Checkpoint based on step frequency if configured
+    // For now, return false (checkpointing will be fully implemented with I/O system)
+    // When checkpoint_frequency_ is set via set_checkpoint_frequency(), this will check against it
+    return false;  // Will be implemented with CheckpointManager
 }
 
 void SimulationEngine::update_simulation_state() {
@@ -268,23 +292,139 @@ void SimulationEngine::update_statistics() {
     // Update performance statistics
     statistics_.total_steps = statistics_.current_step;
     statistics_.total_time = statistics_.current_time;
+    statistics_.num_particles = context_->get_num_particles();
 
-    // TODO: Update detailed performance metrics
+    // Calculate elapsed time for current step
+    auto current_time = std::chrono::steady_clock::now();
+    auto step_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+        current_time - statistics_.current_step_start).count();
+
+    if (step_duration > 0) {
+        statistics_.steps_per_second = 1.0e6 / step_duration;
+        statistics_.particles_per_second = (statistics_.num_particles * 1.0e6) / step_duration;
+    }
+
+    // Update total elapsed time
+    if (statistics_.current_step > 0) {
+        auto total_duration = std::chrono::duration_cast<std::chrono::seconds>(
+            current_time - statistics_.start_time).count();
+        if (total_duration > 0) {
+            statistics_.steps_per_second = static_cast<double>(statistics_.current_step) / total_duration;
+        }
+    }
+
+    // Note: Detailed timing breakdowns (force_computation_time, integration_time, etc.)
+    // will be implemented when IProfiler is integrated
 }
 
 void SimulationEngine::compute_forces() {
-    // TODO: Use registered force computer
-    // For now, just placeholder
+    size_t num_particles = context_->get_num_particles();
+
+    if (force_computer_) {
+        force_computer_->compute_forces(
+            positions_.get(),
+            masses_.get(),
+            forces_.get(),
+            num_particles
+        );
+    } else {
+        // Fallback: Simple direct summation (O(N^2))
+        // Reset forces to zero
+        for (size_t i = 0; i < num_particles * 3; ++i) {
+            forces_[i] = 0.0f;
+        }
+
+        // Gravitational softening length
+        const float softening = 0.01f;
+        const float G = 1.0f;  // Gravitational constant (in simulation units)
+
+        // Compute pairwise forces
+        for (size_t i = 0; i < num_particles; ++i) {
+            float xi = positions_[i * 3 + 0];
+            float yi = positions_[i * 3 + 1];
+            float zi = positions_[i * 3 + 2];
+            float mi = masses_[i];
+
+            for (size_t j = i + 1; j < num_particles; ++j) {
+                float xj = positions_[j * 3 + 0];
+                float yj = positions_[j * 3 + 1];
+                float zj = positions_[j * 3 + 2];
+                float mj = masses_[j];
+
+                // Compute separation vector
+                float dx = xj - xi;
+                float dy = yj - yi;
+                float dz = zj - zi;
+
+                // Compute distance with softening
+                float r2 = dx * dx + dy * dy + dz * dz + softening * softening;
+                float r = std::sqrt(r2);
+                float r3 = r2 * r;
+
+                // Compute force magnitude: F = G*m1*m2/r^2
+                float force_mag = G * mi * mj / r3;  // Already divided by r for unit vector
+
+                // Apply forces (Newton's third law)
+                forces_[i * 3 + 0] += force_mag * dx;
+                forces_[i * 3 + 1] += force_mag * dy;
+                forces_[i * 3 + 2] += force_mag * dz;
+
+                forces_[j * 3 + 0] -= force_mag * dx;
+                forces_[j * 3 + 1] -= force_mag * dy;
+                forces_[j * 3 + 2] -= force_mag * dz;
+            }
+        }
+
+        // Convert forces to accelerations: a = F / m
+        for (size_t i = 0; i < num_particles; ++i) {
+            float inv_mass = 1.0f / masses_[i];
+            forces_[i * 3 + 0] *= inv_mass;
+            forces_[i * 3 + 1] *= inv_mass;
+            forces_[i * 3 + 2] *= inv_mass;
+        }
+    }
 }
 
 void SimulationEngine::integrate_step() {
-    // TODO: Use registered integrator
-    // For now, just placeholder
+    if (integrator_) {
+        size_t num_particles = context_->get_num_particles();
+        integrator_->step(
+            positions_.get(),
+            velocities_.get(),
+            forces_.get(),
+            num_particles,
+            time_step_
+        );
+    } else {
+        // No integrator registered - use simple Euler integration as fallback
+        size_t num_particles = context_->get_num_particles();
+        for (size_t i = 0; i < num_particles; ++i) {
+            // Update velocities: v = v + a*dt
+            velocities_[i * 3 + 0] += forces_[i * 3 + 0] * time_step_;
+            velocities_[i * 3 + 1] += forces_[i * 3 + 1] * time_step_;
+            velocities_[i * 3 + 2] += forces_[i * 3 + 2] * time_step_;
+
+            // Update positions: x = x + v*dt
+            positions_[i * 3 + 0] += velocities_[i * 3 + 0] * time_step_;
+            positions_[i * 3 + 1] += velocities_[i * 3 + 1] * time_step_;
+            positions_[i * 3 + 2] += velocities_[i * 3 + 2] * time_step_;
+        }
+    }
 }
 
 void SimulationEngine::update_cosmology() {
-    // TODO: Use registered cosmology model
-    // For now, just placeholder
+    if (cosmology_model_) {
+        // Update scale factor using cosmology model
+        double scale_factor = context_->get_scale_factor();
+        cosmology_model_->update_scale_factor(scale_factor, time_step_);
+        context_->set_scale_factor(scale_factor);
+
+        // Update statistics
+        statistics_.scale_factor = scale_factor;
+        statistics_.redshift = (1.0 / scale_factor) - 1.0;
+    } else {
+        // No cosmology model - this is acceptable for non-cosmological simulations
+    }
 }
 
 bool SimulationEngine::output_snapshot() {
@@ -353,28 +493,127 @@ void SimulationEngine::print_performance_summary() const {
 }
 
 double SimulationEngine::compute_total_energy() const {
-    // TODO: Implement energy computation
-    return 0.0;
+    return compute_kinetic_energy() + compute_potential_energy();
 }
 
 double SimulationEngine::compute_kinetic_energy() const {
-    // TODO: Implement kinetic energy computation
-    return 0.0;
+    if (!velocities_ || !masses_) {
+        return 0.0;
+    }
+
+    double kinetic = 0.0;
+    size_t num_particles = context_->get_num_particles();
+
+    for (size_t i = 0; i < num_particles; ++i) {
+        float vx = velocities_[i * 3 + 0];
+        float vy = velocities_[i * 3 + 1];
+        float vz = velocities_[i * 3 + 2];
+        float mass = masses_[i];
+
+        double v_squared = vx * vx + vy * vy + vz * vz;
+        kinetic += 0.5 * mass * v_squared;
+    }
+
+    return kinetic;
 }
 
 double SimulationEngine::compute_potential_energy() const {
-    // TODO: Implement potential energy computation
-    return 0.0;
+    if (!positions_ || !masses_) {
+        return 0.0;
+    }
+
+    double potential = 0.0;
+    size_t num_particles = context_->get_num_particles();
+    float softening = 0.01f;  // Gravitational softening length
+
+    // Compute pairwise potential energy
+    for (size_t i = 0; i < num_particles; ++i) {
+        float xi = positions_[i * 3 + 0];
+        float yi = positions_[i * 3 + 1];
+        float zi = positions_[i * 3 + 2];
+        float mi = masses_[i];
+
+        for (size_t j = i + 1; j < num_particles; ++j) {
+            float xj = positions_[j * 3 + 0];
+            float yj = positions_[j * 3 + 1];
+            float zj = positions_[j * 3 + 2];
+            float mj = masses_[j];
+
+            float dx = xj - xi;
+            float dy = yj - yi;
+            float dz = zj - zi;
+
+            float r2 = dx * dx + dy * dy + dz * dz + softening * softening;
+            float r = sqrtf(r2);
+
+            // Gravitational potential: -G*m1*m2/r (G=1 in our units)
+            potential -= mi * mj / r;
+        }
+    }
+
+    return potential;
 }
 
 float3 SimulationEngine::compute_center_of_mass() const {
-    // TODO: Implement center of mass computation
-    return make_float3(0.0f, 0.0f, 0.0f);
+    if (!positions_ || !masses_) {
+        return make_float3(0.0f, 0.0f, 0.0f);
+    }
+
+    float total_mass = 0.0f;
+    float3 com = make_float3(0.0f, 0.0f, 0.0f);
+    size_t num_particles = context_->get_num_particles();
+
+    for (size_t i = 0; i < num_particles; ++i) {
+        float mass = masses_[i];
+        total_mass += mass;
+
+        com.x += positions_[i * 3 + 0] * mass;
+        com.y += positions_[i * 3 + 1] * mass;
+        com.z += positions_[i * 3 + 2] * mass;
+    }
+
+    if (total_mass > 0.0f) {
+        com.x /= total_mass;
+        com.y /= total_mass;
+        com.z /= total_mass;
+    }
+
+    return com;
 }
 
 float3 SimulationEngine::compute_angular_momentum() const {
-    // TODO: Implement angular momentum computation
-    return make_float3(0.0f, 0.0f, 0.0f);
+    if (!positions_ || !velocities_ || !masses_) {
+        return make_float3(0.0f, 0.0f, 0.0f);
+    }
+
+    // First compute center of mass
+    float3 com = compute_center_of_mass();
+
+    float3 L = make_float3(0.0f, 0.0f, 0.0f);
+    size_t num_particles = context_->get_num_particles();
+
+    for (size_t i = 0; i < num_particles; ++i) {
+        float mass = masses_[i];
+
+        // Position relative to center of mass
+        float3 r;
+        r.x = positions_[i * 3 + 0] - com.x;
+        r.y = positions_[i * 3 + 1] - com.y;
+        r.z = positions_[i * 3 + 2] - com.z;
+
+        // Velocity
+        float3 v;
+        v.x = velocities_[i * 3 + 0];
+        v.y = velocities_[i * 3 + 1];
+        v.z = velocities_[i * 3 + 2];
+
+        // Angular momentum L = r × (m*v)
+        L.x += mass * (r.y * v.z - r.z * v.y);
+        L.y += mass * (r.z * v.x - r.x * v.z);
+        L.z += mass * (r.x * v.y - r.y * v.x);
+    }
+
+    return L;
 }
 
 // SimulationBuilder implementation

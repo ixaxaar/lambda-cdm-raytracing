@@ -35,11 +35,25 @@ struct CosmologyParams {
 class CosmologyModel {
 private:
     CosmologyParams params_;
-    
+
     // Constants
     static constexpr double c_light = 299792.458;  // Speed of light in km/s
     static constexpr double G = 4.3009e-9;         // G in (km/s)^2 Mpc/M_sun
-    
+
+    // Cached normalization factor for growth function
+    mutable double growth_normalization_ = -1.0;
+
+    // Helper: compute unnormalized growth factor
+    double growth_factor_unnormalized(double a) const {
+        double omega_m_z = omega_matter_a(a);
+        double omega_l_z = omega_lambda_a(a);
+
+        // Carroll et al. (1992) approximation
+        return a * std::pow(omega_m_z, 0.6) /
+               (std::pow(omega_m_z, 0.6) +
+                omega_l_z * (1.0 + omega_m_z / 70.0));
+    }
+
 public:
     explicit CosmologyModel(const CosmologyParams& params) : params_(params) {
         params_.validate();
@@ -76,18 +90,15 @@ public:
         return -4.0 * M_PI * G / 3.0 * a * (rho_m - 2.0 * rho_lambda);
     }
     
-    // Growth factor D(a) for linear perturbations
+    // Growth factor D(a) for linear perturbations (normalized so D(a=1) = 1)
     double growth_factor(double a) const {
-        // Approximate solution for flat Lambda-CDM
-        double omega_m_z = omega_matter_a(a);
-        double omega_l_z = omega_lambda_a(a);
-        
-        // Carroll et al. (1992) approximation
-        double D = a * std::pow(omega_m_z, 0.6) / 
-                  (std::pow(omega_m_z, 0.6) + 
-                   omega_l_z * (1.0 + omega_m_z / 70.0));
-        
-        return D;
+        // Compute normalization factor on first call
+        if (growth_normalization_ < 0.0) {
+            growth_normalization_ = growth_factor_unnormalized(1.0);
+        }
+
+        // Return normalized growth factor
+        return growth_factor_unnormalized(a) / growth_normalization_;
     }
     
     // Growth rate f = d log D / d log a

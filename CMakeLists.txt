@@ -125,7 +125,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
 endif()
 
 # Testing (optional)
-option(ENABLE_TESTING "Enable testing" OFF)
+option(ENABLE_TESTING "Enable testing" ON)
 if(ENABLE_TESTING)
     enable_testing()
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")

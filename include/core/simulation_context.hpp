@@ -63,7 +63,11 @@ public:
     // Configuration access
     ConfigurationManager& get_config() { return *config_manager_; }
     const ConfigurationManager& get_config() const { return *config_manager_; }
-    
+
+    // Component registry access
+    ComponentRegistry& get_component_registry() { return *component_registry_; }
+    const ComponentRegistry& get_component_registry() const { return *component_registry_; }
+
     // Resource management
     IResourceManager& get_resource_manager() { return *resource_manager_; }
     const IResourceManager& get_resource_manager() const { return *resource_manager_; }
