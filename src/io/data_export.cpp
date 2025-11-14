@@ -94,6 +94,9 @@ SnapshotMetadata DataExporter::extract_metadata(const std::any& metadata_any,
             const auto* meta_ptr = std::any_cast<SnapshotMetadata>(&metadata_any);
             if (meta_ptr) {
                 metadata = *meta_ptr;
+                // Preserve time and num_particles from parameters (they take precedence)
+                metadata.time = time;
+                metadata.num_particles = num_particles;
             }
         }
     } catch (const std::bad_any_cast& e) {

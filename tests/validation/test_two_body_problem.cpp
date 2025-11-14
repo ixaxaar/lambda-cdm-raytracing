@@ -20,39 +20,43 @@ protected:
 
     std::unique_ptr<SimulationEngine> engine;
 
-    // Helper: Set up circular orbit
+    // Helper: Set up circular orbit with center of mass at origin
     void setup_circular_orbit(float separation, float mass1, float mass2) {
-        // Place particles at specified separation
-        // For circular orbit: v = sqrt(GM/r)
-
         float* pos = const_cast<float*>(engine->get_positions());
         float* vel = const_cast<float*>(engine->get_velocities());
         float* masses = const_cast<float*>(engine->get_masses());
 
-        // Particle 1 at origin
-        pos[0] = 0.0f;
-        pos[1] = 0.0f;
-        pos[2] = 0.0f;
-
-        // Particle 2 at distance r
-        pos[3] = separation;
-        pos[4] = 0.0f;
-        pos[5] = 0.0f;
-
-        // Masses
         masses[0] = mass1;
         masses[1] = mass2;
 
-        // Circular orbit velocity (simplified, assuming M >> m)
-        float v_orbit = std::sqrt(mass1 / separation);
+        // Total mass
+        float M = mass1 + mass2;
 
-        // Velocities for circular orbit in x-y plane
+        // Distances from center of mass
+        float r1 = separation * mass2 / M;
+        float r2 = separation * mass1 / M;
+
+        // Place particles on opposite sides of center of mass (x-axis)
+        pos[0] = -r1;
+        pos[1] = 0.0f;
+        pos[2] = 0.0f;
+
+        pos[3] = r2;
+        pos[4] = 0.0f;
+        pos[5] = 0.0f;
+
+        // Circular orbit velocities in center of mass frame
+        // For circular orbit: v^2 = G*M_other/r
+        float v1 = std::sqrt(mass2 / separation);
+        float v2 = std::sqrt(mass1 / separation);
+
+        // Velocities perpendicular to positions (y direction) for circular motion
         vel[0] = 0.0f;
-        vel[1] = 0.0f;
+        vel[1] = v1;
         vel[2] = 0.0f;
 
         vel[3] = 0.0f;
-        vel[4] = v_orbit;
+        vel[4] = -v2;
         vel[5] = 0.0f;
     }
 };

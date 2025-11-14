@@ -116,8 +116,14 @@ bool SimulationEngine::run() {
 }
 
 bool SimulationEngine::step() {
-    if (state_ != SimulationState::RUNNING) {
+    // Allow stepping in both INITIALIZED and RUNNING states
+    if (state_ != SimulationState::INITIALIZED && state_ != SimulationState::RUNNING) {
         return false;
+    }
+
+    // Transition from INITIALIZED to RUNNING on first step
+    if (state_ == SimulationState::INITIALIZED) {
+        state_ = SimulationState::RUNNING;
     }
 
     on_step_start();
@@ -312,8 +318,9 @@ void SimulationEngine::update_statistics() {
 }
 
 void SimulationEngine::compute_forces() {
+    size_t num_particles = context_->get_num_particles();
+
     if (force_computer_) {
-        size_t num_particles = context_->get_num_particles();
         force_computer_->compute_forces(
             positions_.get(),
             masses_.get(),
@@ -321,8 +328,60 @@ void SimulationEngine::compute_forces() {
             num_particles
         );
     } else {
-        // No force computer registered - forces remain zero
-        // This is acceptable for initialization/testing
+        // Fallback: Simple direct summation (O(N^2))
+        // Reset forces to zero
+        for (size_t i = 0; i < num_particles * 3; ++i) {
+            forces_[i] = 0.0f;
+        }
+
+        // Gravitational softening length
+        const float softening = 0.01f;
+        const float G = 1.0f;  // Gravitational constant (in simulation units)
+
+        // Compute pairwise forces
+        for (size_t i = 0; i < num_particles; ++i) {
+            float xi = positions_[i * 3 + 0];
+            float yi = positions_[i * 3 + 1];
+            float zi = positions_[i * 3 + 2];
+            float mi = masses_[i];
+
+            for (size_t j = i + 1; j < num_particles; ++j) {
+                float xj = positions_[j * 3 + 0];
+                float yj = positions_[j * 3 + 1];
+                float zj = positions_[j * 3 + 2];
+                float mj = masses_[j];
+
+                // Compute separation vector
+                float dx = xj - xi;
+                float dy = yj - yi;
+                float dz = zj - zi;
+
+                // Compute distance with softening
+                float r2 = dx * dx + dy * dy + dz * dz + softening * softening;
+                float r = std::sqrt(r2);
+                float r3 = r2 * r;
+
+                // Compute force magnitude: F = G*m1*m2/r^2
+                float force_mag = G * mi * mj / r3;  // Already divided by r for unit vector
+
+                // Apply forces (Newton's third law)
+                forces_[i * 3 + 0] += force_mag * dx;
+                forces_[i * 3 + 1] += force_mag * dy;
+                forces_[i * 3 + 2] += force_mag * dz;
+
+                forces_[j * 3 + 0] -= force_mag * dx;
+                forces_[j * 3 + 1] -= force_mag * dy;
+                forces_[j * 3 + 2] -= force_mag * dz;
+            }
+        }
+
+        // Convert forces to accelerations: a = F / m
+        for (size_t i = 0; i < num_particles; ++i) {
+            float inv_mass = 1.0f / masses_[i];
+            forces_[i * 3 + 0] *= inv_mass;
+            forces_[i * 3 + 1] *= inv_mass;
+            forces_[i * 3 + 2] *= inv_mass;
+        }
     }
 }
 
