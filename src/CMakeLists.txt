@@ -49,6 +49,20 @@ if(HAVE_MPI)
     endif()
 endif()
 
+# I/O module - base classes always included
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/io/data_export.cpp")
+    list(APPEND SOURCES io/data_export.cpp)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/io/binary_writer.cpp")
+    list(APPEND SOURCES io/binary_writer.cpp)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/io/checkpoint_manager.cpp")
+    list(APPEND SOURCES io/checkpoint_manager.cpp)
+endif()
+
+# HDF5Writer - only if HDF5 is available
 if(HAVE_HDF5)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/io/hdf5_writer.cpp")
         list(APPEND SOURCES io/hdf5_writer.cpp)

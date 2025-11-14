@@ -6,7 +6,10 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
-#include <cuda_runtime.h>
+
+#ifdef HAVE_CUDA
+    #include <cuda_runtime.h>
+#endif
 
 namespace core {
 
@@ -44,6 +47,7 @@ public:
     void defragment();
 };
 
+#ifdef HAVE_CUDA
 class GPUResourceManager : public IResourceManager {
 private:
     // Memory pools for different data types
@@ -244,5 +248,6 @@ public:
         }
     }
 };
+#endif  // HAVE_CUDA
 
 }

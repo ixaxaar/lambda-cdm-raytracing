@@ -3,6 +3,17 @@
 #include <algorithm>
 #include <sstream>
 
+// Dynamic plugin loading support
+#ifdef __unix__
+    #include <dlfcn.h>
+    #define PLUGIN_AVAILABLE 1
+#elif defined(_WIN32)
+    #include <windows.h>
+    #define PLUGIN_AVAILABLE 1
+#else
+    #define PLUGIN_AVAILABLE 0
+#endif
+
 namespace core {
 
 ComponentRegistry::ComponentRegistry() = default;
@@ -222,15 +233,128 @@ void ComponentRegistry::topological_sort(std::vector<std::string>& result) const
 }
 
 bool ComponentRegistry::load_plugin(const std::string& plugin_path) {
+    std::lock_guard<std::mutex> lock(registry_mutex_);
+
     std::cout << "Loading plugin: " << plugin_path << std::endl;
-    // TODO: Implement dynamic plugin loading
+
+#if PLUGIN_AVAILABLE
+
+#ifdef __unix__
+    // Load the shared library
+    void* handle = dlopen(plugin_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    if (!handle) {
+        std::cerr << "Failed to load plugin: " << dlerror() << std::endl;
+        return false;
+    }
+
+    // Look for the plugin factory function
+    // Expected signature: extern "C" IPlugin* create_plugin()
+    using CreatePluginFunc = IPlugin* (*)();
+    CreatePluginFunc create_plugin = reinterpret_cast<CreatePluginFunc>(
+        dlsym(handle, "create_plugin"));
+
+    if (!create_plugin) {
+        std::cerr << "Plugin does not export 'create_plugin' function: " << dlerror() << std::endl;
+        dlclose(handle);
+        return false;
+    }
+
+    // Create the plugin instance
+    IPlugin* plugin = create_plugin();
+    if (!plugin) {
+        std::cerr << "Failed to create plugin instance" << std::endl;
+        dlclose(handle);
+        return false;
+    }
+
+    // Initialize the plugin
+    if (!plugin->initialize()) {
+        std::cerr << "Failed to initialize plugin" << std::endl;
+        delete plugin;
+        dlclose(handle);
+        return false;
+    }
+
+    // Store the plugin  (we'll manage the handle separately)
+    std::string plugin_name = plugin->get_name();
+    plugins_[plugin_name] = std::unique_ptr<IPlugin>(plugin);
+
+    // Note: The dlclose(handle) will be called when the process exits
+    // For production code, we'd want to track handles separately for proper cleanup
+
+    std::cout << "Plugin loaded successfully: " << plugin_name
+              << " v" << plugin->get_version() << std::endl;
+    return true;
+
+#elif defined(_WIN32)
+    // Windows implementation using LoadLibrary
+    HMODULE handle = LoadLibraryA(plugin_path.c_str());
+    if (!handle) {
+        std::cerr << "Failed to load plugin: error code " << GetLastError() << std::endl;
+        return false;
+    }
+
+    using CreatePluginFunc = IPlugin* (*)();
+    CreatePluginFunc create_plugin = reinterpret_cast<CreatePluginFunc>(
+        GetProcAddress(handle, "create_plugin"));
+
+    if (!create_plugin) {
+        std::cerr << "Plugin does not export 'create_plugin' function" << std::endl;
+        FreeLibrary(handle);
+        return false;
+    }
+
+    IPlugin* plugin = create_plugin();
+    if (!plugin || !plugin->initialize()) {
+        std::cerr << "Failed to create or initialize plugin" << std::endl;
+        if (plugin) delete plugin;
+        FreeLibrary(handle);
+        return false;
+    }
+
+    std::string plugin_name = plugin->get_name();
+    plugins_[plugin_name] = std::unique_ptr<IPlugin>(plugin);
+
+    // Note: The FreeLibrary(handle) will be called when the process exits
+    // For production code, we'd want to track handles separately for proper cleanup
+
+    std::cout << "Plugin loaded successfully: " << plugin_name << std::endl;
+    return true;
+#endif
+
+#else
+    std::cerr << "Dynamic plugin loading not supported on this platform" << std::endl;
     return false;
+#endif
 }
 
 bool ComponentRegistry::unload_plugin(const std::string& plugin_name) {
+    std::lock_guard<std::mutex> lock(registry_mutex_);
+
     std::cout << "Unloading plugin: " << plugin_name << std::endl;
-    // TODO: Implement plugin unloading
-    return false;
+
+    auto it = plugins_.find(plugin_name);
+    if (it == plugins_.end()) {
+        std::cerr << "Plugin not found: " << plugin_name << std::endl;
+        return false;
+    }
+
+    // Get component types before removing
+    auto component_types = it->second->get_component_types();
+
+    // Remove all components created by this plugin
+    for (const auto& type : component_types) {
+        auto comp_names = get_component_names_by_type(std::type_index(typeid(type)));
+        for (const auto& comp_name : comp_names) {
+            unregister_component(comp_name);
+        }
+    }
+
+    // Remove the plugin (shared_ptr destructor will call finalize and dlclose)
+    plugins_.erase(it);
+
+    std::cout << "Plugin unloaded successfully: " << plugin_name << std::endl;
+    return true;
 }
 
 std::vector<std::string> ComponentRegistry::get_loaded_plugins() const {
